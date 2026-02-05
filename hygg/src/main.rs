@@ -233,6 +233,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   } else if let Some(file) = file {
     let temp_file = format!("{file}-{}", uuid::Uuid::new_v4());
 
+    let extension = std::path::Path::new(&file)
+      .extension()
+      .and_then(|ext| ext.to_str())
+      .map(|ext| ext.to_lowercase());
+    let is_pdf = extension.as_deref() == Some("pdf") || args.ocr;
+
     let content = if (args.ocr && which("ocrmypdf").is_some()) {
       // Validate and normalize file path to prevent command injection
       let canonical_file = match normalize_file_path(&file) {
@@ -273,12 +279,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
       cli_pdf_to_text::pdf_to_text(&temp_file)?
     } else {
-      // Check file extension first for better format routing
-      let extension = std::path::Path::new(&file)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_lowercase());
-
       match extension.as_deref() {
         Some("epub") => match cli_epub_to_text::epub_to_text(&file) {
           Ok(content) => content,
@@ -320,7 +320,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       }
     };
 
-    let lines = cli_justify::justify(&content, args.col);
+    let lines = if is_pdf {
+      cli_justify::wrap_preserve_whitespace(&content, args.col)
+    } else {
+      cli_justify::justify(&content, args.col)
+    };
 
     // Check if we have any content to display
     if lines.is_empty() || (lines.len() == 1 && lines[0].trim().is_empty()) {
@@ -337,6 +341,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Users can access tutorial with :tutorial command
     (vec![], None, None)
   };
+
+  if !atty::is(atty::Stream::Stdout) {
+    // Non-interactive mode: print processed output and exit.
+    println!("{}", lines.join("\n"));
+
+    if let Some(temp_file) = temp_file
+      && std::path::Path::new(&temp_file).exists()
+    {
+      std::fs::remove_file(&temp_file)?;
+    }
+
+    return Ok(());
+  }
 
   // Now redirect stderr after file validation is complete
   if let Err(e) = redirect_stderr::redirect_stderr() {

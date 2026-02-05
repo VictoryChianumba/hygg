@@ -4,6 +4,8 @@ use std::{
   io::{BufWriter, Cursor},
 };
 
+mod layout_text_output;
+
 pub fn pdf_to_text(
   pdf_path: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -46,7 +48,7 @@ pub fn pdf_to_text(
 
     pdf_extract::print_metadata(&doc);
 
-    let mut output = Box::new(pdf_extract::PlainTextOutput::new(
+    let mut output = Box::new(layout_text_output::LayoutTextOutput::new(
       &mut output_file as &mut dyn std::io::Write,
     ));
 
